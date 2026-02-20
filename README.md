@@ -29,3 +29,7 @@ processes.
 [![Build Status](https://ci.appveyor.com/api/projects/status/gitlab/inkscape/inkscape?branch=master&svg=true)](https://ci.appveyor.com/project/inkscape/inkscape)
 
 For installation, please see: [INSTALL.md](INSTALL.md)
+
+----
+
+Build command to avoid the poppler madness (MSYS2): cmake -G Ninja -DCMAKE_INSTALL_PREFIX="${PWD}/install_dir" -DCMAKE_BUILD_TYPE=Debug -DBUILD_SHARED_LIBS=OFF -DWITH_INTERNAL_2GEOM=ON -DWITH_INTERNAL_CAIRO=OFF -DENABLE_POPPLER=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..

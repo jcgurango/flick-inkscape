@@ -36,6 +36,7 @@
  */
 
 #include "inkscape-application.h"
+#include "pipe-mode.h"
 
 #ifdef HAVE_CONFIG_H
 # include "config.h"      // Defines ENABLE_NLS
@@ -798,6 +799,7 @@ InkscapeApplication::InkscapeApplication()
     gapp->add_main_option_entry(T::OPTION_TYPE_BOOL,     "batch-process",         '\0', N_("Close GUI after executing all actions"),                                    "");
     _start_main_option_section();
     gapp->add_main_option_entry(T::OPTION_TYPE_BOOL,     "shell",                 '\0', N_("Start Inkscape in interactive shell mode"),                                 "");
+    gapp->add_main_option_entry(T::OPTION_TYPE_BOOL,     "pipe-mode",             '\0', N_("Start in pipe mode: read LOAD commands from stdin, write SAVE to stdout"),  "");
     gapp->add_main_option_entry(T::OPTION_TYPE_BOOL,     "active-window",          'q', N_("Use active window from commandline"),                                       "");
     // clang-format on
 
@@ -813,6 +815,7 @@ InkscapeApplication::InkscapeApplication()
 
 InkscapeApplication::~InkscapeApplication()
 {
+    _pipe_mode.reset();
     _instance = nullptr;
     Inkscape::Util::StaticsBin::get().destroy();
 }
@@ -921,15 +924,21 @@ InkscapeApplication::destroy_window(InkscapeWindow* window, bool keep_alive)
         return false;
     }
 
+    // Notify pipe mode before window is destroyed (pointer still valid)
+    if (_pipe_mode) _pipe_mode->on_window_destroyed(window);
+
     // Remove document if no window with document is left.
     auto it = _documents.find(document);
     if (it != _documents.end()) {
         // If only one window for document:
         if (it->second.size() == 1) {
-            // Check if document needs saving.
-            bool abort = document_check_for_data_loss(window);
-            if (abort) {
-                return false;
+            // Skip data-loss check for pipe-mode documents
+            bool is_pipe = _pipe_mode && _pipe_mode->is_pipe_document(document);
+            if (!is_pipe) {
+                bool abort = document_check_for_data_loss(window);
+                if (abort) {
+                    return false;
+                }
             }
         }
 
@@ -1031,7 +1040,7 @@ void
 InkscapeApplication::on_startup()
 {
     // Add the start/splash screen to the app as soon as possible
-    if (_with_gui && !_use_pipe && !_use_command_line_argument && gtk_app() &&
+    if (_with_gui && !_use_pipe && !_use_pipe_mode && !_use_command_line_argument && gtk_app() &&
         Inkscape::UI::Dialog::StartScreen::get_start_mode() > 0) {
         _start_screen = std::make_unique<Inkscape::UI::Dialog::StartScreen>();
         _start_screen->show_now();
@@ -1098,6 +1107,12 @@ InkscapeApplication::on_startup()
 void
 InkscapeApplication::on_activate()
 {
+    if (_use_pipe_mode) {
+        _pipe_mode = std::make_unique<PipeMode>();
+        _pipe_mode->start();
+        return;  // No default document/window — pipe mode handles everything
+    }
+
     std::string output;
 
     // Create new document, either from pipe or from template.
@@ -1600,6 +1615,7 @@ InkscapeApplication::on_handle_local_options(const Glib::RefPtr<Glib::VariantDic
     if (options->contains("batch-process"))  _batch_process = true;
     if (options->contains("shell"))          _use_shell = true;
     if (options->contains("pipe"))           _use_pipe  = true;
+    if (options->contains("pipe-mode"))      _use_pipe_mode = true;
 
     // Enable auto-export
     if (options->contains("export-filename")  ||
@@ -1617,6 +1633,7 @@ InkscapeApplication::on_handle_local_options(const Glib::RefPtr<Glib::VariantDic
     // when the extension author hasn't already done so
     bool use_active_window = options->contains("active-window");
     if (!options->contains("app-id-tag") && ((_with_gui == false && use_active_window == false) ||
+                                             _use_pipe_mode ||
                                              (Glib::getenv("SELF_CALL") != "" && _with_gui == true))) {
         Glib::ustring app_id = "org.inkscape.Inkscape.p" + std::to_string(getpid());
         _gio_application->set_id(app_id);

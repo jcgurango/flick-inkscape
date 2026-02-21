@@ -22,6 +22,9 @@
 #include "inkscape-window.h"
 #include "desktop.h"
 #include "file.h"
+#include "inkscape.h"
+#include "message-stack.h"
+#include "pipe-mode.h"
 #include "ui/dialog/save-template-dialog.h"
 #include "ui/dialog/new-from-template.h"
 
@@ -60,6 +63,13 @@ document_save(InkscapeWindow* win)
 void
 document_save_as(InkscapeWindow* win)
 {
+    PipeMode *pm = PipeMode::instance();
+    if (pm && pm->is_pipe_document(win->get_document())) {
+        // Save As is disabled for pipe-mode documents — use Save a Copy instead
+        SP_ACTIVE_DESKTOP->messageStack()->flash(
+            Inkscape::WARNING_MESSAGE, _("Save As is disabled in pipe mode. Use Save a Copy instead."));
+        return;
+    }
     // Save File As
     sp_file_save_as(*win, nullptr, nullptr);
 }

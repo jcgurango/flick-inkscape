@@ -11,6 +11,7 @@
 #define INKSCAPE_APPLICATION_H
 
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,6 +32,7 @@ class File;
 typedef std::vector<std::pair<std::string, Glib::VariantBase> > action_vector_t;
 
 class InkscapeWindow;
+class PipeMode;
 class SPDocument;
 class SPDesktop;
 
@@ -146,6 +148,7 @@ protected:
     bool _batch_process = false; // Temp
     bool _use_shell   = false;
     bool _use_pipe    = false;
+    bool _use_pipe_mode = false;
     bool _auto_export = false;
     int _pdf_poppler  = false;
     FontStrategy _pdf_font_strategy = FontStrategy::RENDER_MISSING;
@@ -194,6 +197,7 @@ private:
     void init_extension_action_data();
     std::vector<Glib::RefPtr<Gio::SimpleAction>> _effect_actions;
     std::unique_ptr<Inkscape::UI::Dialog::StartScreen> _start_screen;
+    std::unique_ptr<PipeMode> _pipe_mode;
 };
 
 #endif // INKSCAPE_APPLICATION_H

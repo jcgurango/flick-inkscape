@@ -27,6 +27,7 @@
 #include "document.h"
 #include "enums.h"      // PREFS_WINDOW_GEOMETRY_NONE
 #include "inkscape-application.h"
+#include "pipe-mode.h"
 
 #include "actions/actions-canvas-mode.h"
 #include "actions/actions-canvas-snapping.h"
@@ -193,6 +194,13 @@ InkscapeWindow::change_document(SPDocument* document)
 void
 InkscapeWindow::setup_view()
 {
+    // In pipe-mode LOAD with same filename, skip window geometry/zoom changes
+    PipeMode *pm = PipeMode::instance();
+    if (pm && pm->preserve_geometry()) {
+        sp_namedview_update_layers_from_document(_desktop);
+        return;
+    }
+
     // Make sure the GdkWindow is fully initialized before resizing/moving
     // (ensures the monitor it'll be shown on is known)
     realize();
@@ -207,7 +215,7 @@ InkscapeWindow::setup_view()
     //       This can result in off-screen windows! We previously worked around this by hiding and re-showing
     //       the window, but a call to set_visible(false) causes Inkscape to just exit since the migration to Gtk::Application
     set_visible(true);
-    
+
     _desktop->schedule_zoom_from_document();
     sp_namedview_update_layers_from_document(_desktop);
 

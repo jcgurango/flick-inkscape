@@ -149,6 +149,7 @@ protected:
     bool _use_shell   = false;
     bool _use_pipe    = false;
     bool _use_pipe_mode = false;
+    bool _delegate_undo = false;
     bool _auto_export = false;
     int _pdf_poppler  = false;
     FontStrategy _pdf_font_strategy = FontStrategy::RENDER_MISSING;

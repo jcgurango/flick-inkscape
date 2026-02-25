@@ -25,6 +25,7 @@
 #include "document.h"
 #include "inkscape-application.h"
 #include "inkscape-window.h"
+#include "actions/actions-undo-document.h"
 #include "xml/repr.h"
 
 // --- Undo observer that forwards all state changes to PipeMode ---
@@ -225,6 +226,11 @@ void PipeMode::handle_open()
     // Document starts clean
     doc->setModifiedSinceSave(false);
 
+    // Force undo/redo always enabled when delegating (must be after _doc_to_id registration)
+    if (_delegate_undo) {
+        enable_undo_actions(doc, true, true);
+    }
+
     write_line("OPEN " + std::to_string(id));
 }
 
@@ -253,8 +259,11 @@ void PipeMode::handle_load(int window_id, std::string filename, std::string svg_
     double zoom = desktop->current_zoom();
     Geom::Point center = desktop->current_center();
 
-    // Suppress SAVE emission during swap — the consumer already has this content
+    // Suppress SAVE emission during swap
     _loading = true;
+    // Preserve window geometry if the filename hasn't changed (e.g. undo/redo reload)
+    const char *old_fname = old_doc->getDocumentFilename();
+    _preserve_geometry = (old_fname && filename == old_fname);
 
     // Disconnect observer from old doc, swap, connect to new doc
     disconnect_document(old_doc);
@@ -265,12 +274,21 @@ void PipeMode::handle_load(int window_id, std::string filename, std::string svg_
     _doc_to_id[new_doc] = window_id;
     connect_document(new_doc);
 
-    desktop->zoom_absolute(center, zoom, false);
+    // Restore zoom when geometry was preserved (filename unchanged)
+    if (_preserve_geometry) {
+        desktop->zoom_absolute(center, zoom, false);
+    }
 
     // New content starts clean
     new_doc->setModifiedSinceSave(false);
 
+    // Force undo/redo always enabled when delegating (must be after _doc_to_id registration)
+    if (_delegate_undo) {
+        enable_undo_actions(new_doc, true, true);
+    }
+
     _loading = false;
+    _preserve_geometry = false;
 
     // Close old document if no other windows reference it
     if (app->document_window_count(old_doc) == 0) {
@@ -375,6 +393,12 @@ void PipeMode::on_window_destroyed(InkscapeWindow *window)
 bool PipeMode::is_pipe_document(SPDocument *doc) const
 {
     return _doc_to_id.find(doc) != _doc_to_id.end();
+}
+
+int PipeMode::get_window_id(SPDocument *doc) const
+{
+    auto it = _doc_to_id.find(doc);
+    return it != _doc_to_id.end() ? it->second : -1;
 }
 
 // --- Stdout helpers ---

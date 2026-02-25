@@ -35,9 +35,16 @@ public:
     void start();
     void stop();
 
+    void set_delegate_undo(bool delegate) { _delegate_undo = delegate; }
+    bool delegate_undo() const { return _delegate_undo; }
+    bool preserve_geometry() const { return _preserve_geometry; }
+
     void on_window_destroyed(InkscapeWindow *window);
 
     bool is_pipe_document(SPDocument *doc) const;
+    int get_window_id(SPDocument *doc) const;
+
+    void write_line(const std::string &line);
 
     static PipeMode *instance() { return _instance; }
 
@@ -55,7 +62,6 @@ private:
     void connect_document(SPDocument *doc);
     void disconnect_document(SPDocument *doc);
 
-    void write_line(const std::string &line);
     void write_message(const std::string &header, const std::string &filename,
                        const std::string &content);
 
@@ -72,8 +78,12 @@ private:
     // commit_signal connections per document (handles new commits)
     std::map<SPDocument *, sigc::connection> _commit_connections;
 
+    bool _delegate_undo = false;
+
     // Suppress emitting SAVE during LOAD (the commit from document_swap)
     bool _loading = false;
+    // Suppress setup_view window geometry changes when filename hasn't changed
+    bool _preserve_geometry = false;
 
     Inkscape::Async::Channel::Dest _channel_dest;
     std::mutex _stdout_mutex;

@@ -20,6 +20,7 @@
 #include "document.h"
 #include "document-undo.h"
 #include "inkscape-application.h"
+#include "pipe-mode.h"
 
 // ifdef out for headless operation!
 #include "desktop.h"
@@ -32,6 +33,16 @@ undo(SPDocument* document)
 {
     auto app = InkscapeApplication::instance();
     auto win = app->get_active_window();
+
+    // Delegate to pipe-mode controller if enabled
+    PipeMode *pm = PipeMode::instance();
+    if (pm && pm->delegate_undo() && pm->is_pipe_document(document)) {
+        int id = pm->get_window_id(document);
+        if (id >= 0) {
+            pm->write_line("UNDO " + std::to_string(id));
+        }
+        return;
+    }
 
     // Undo can be used in headless mode.
     if (win) {
@@ -52,6 +63,16 @@ redo(SPDocument* document)
     auto app = InkscapeApplication::instance();
     auto win = app->get_active_window();
 
+    // Delegate to pipe-mode controller if enabled
+    PipeMode *pm = PipeMode::instance();
+    if (pm && pm->delegate_undo() && pm->is_pipe_document(document)) {
+        int id = pm->get_window_id(document);
+        if (id >= 0) {
+            pm->write_line("REDO " + std::to_string(id));
+        }
+        return;
+    }
+
     // Redo can be used in headless mode.
     if (win) {
         auto desktop = win->get_desktop();
@@ -68,6 +89,13 @@ redo(SPDocument* document)
 void
 enable_undo_actions(SPDocument* document, bool undo, bool redo)
 {
+    // Always keep undo/redo enabled when delegating to pipe-mode controller
+    PipeMode *pm = PipeMode::instance();
+    if (pm && pm->delegate_undo() && pm->is_pipe_document(document)) {
+        undo = true;
+        redo = true;
+    }
+
     auto group = document->getActionGroup();
     if (!group)
         return;

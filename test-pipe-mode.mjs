@@ -71,6 +71,20 @@ function parseStdout(stream, handlers) {
           continue;
         }
 
+        // UNDO <id>
+        const undoMatch = line.match(/^UNDO (\d+)$/);
+        if (undoMatch) {
+          handlers.onUndo(parseInt(undoMatch[1]));
+          continue;
+        }
+
+        // REDO <id>
+        const redoMatch = line.match(/^REDO (\d+)$/);
+        if (redoMatch) {
+          handlers.onRedo(parseInt(redoMatch[1]));
+          continue;
+        }
+
         // SAVE <id> content-length:<N>
         const saveMatch = line.match(/^SAVE (\d+) content-length:(\d+)$/);
         if (saveMatch) {
@@ -110,8 +124,9 @@ function parseStdout(stream, handlers) {
 
 // --- Main ---
 
-console.log(`Starting Inkscape: ${INKSCAPE} --pipe-mode`);
-const proc = spawn(INKSCAPE, ["--pipe-mode"], {
+const args = ["--pipe-mode", "--delegate-undo-stack"];
+console.log(`Starting Inkscape: ${INKSCAPE} ${args.join(" ")}`);
+const proc = spawn(INKSCAPE, args, {
   stdio: ["pipe", "pipe", "pipe"],
 });
 
@@ -140,6 +155,12 @@ parseStdout(proc.stdout, {
     console.log(
       `\n<<< SAVE #${saveCount} window ${id} "${filename}" (${Buffer.byteLength(content)} bytes)`
     );
+  },
+  onUndo(id) {
+    console.log(`\n<<< UNDO window ${id}`);
+  },
+  onRedo(id) {
+    console.log(`\n<<< REDO window ${id}`);
   },
 });
 

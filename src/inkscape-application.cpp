@@ -800,6 +800,7 @@ InkscapeApplication::InkscapeApplication()
     _start_main_option_section();
     gapp->add_main_option_entry(T::OPTION_TYPE_BOOL,     "shell",                 '\0', N_("Start Inkscape in interactive shell mode"),                                 "");
     gapp->add_main_option_entry(T::OPTION_TYPE_BOOL,     "pipe-mode",             '\0', N_("Start in pipe mode: read LOAD commands from stdin, write SAVE to stdout"),  "");
+    gapp->add_main_option_entry(T::OPTION_TYPE_BOOL,     "delegate-undo-stack",   '\0', N_("Delegate undo/redo to pipe-mode controller (requires --pipe-mode)"),         "");
     gapp->add_main_option_entry(T::OPTION_TYPE_BOOL,     "active-window",          'q', N_("Use active window from commandline"),                                       "");
     // clang-format on
 
@@ -1109,6 +1110,7 @@ InkscapeApplication::on_activate()
 {
     if (_use_pipe_mode) {
         _pipe_mode = std::make_unique<PipeMode>();
+        _pipe_mode->set_delegate_undo(_delegate_undo);
         _pipe_mode->start();
         return;  // No default document/window — pipe mode handles everything
     }
@@ -1616,6 +1618,7 @@ InkscapeApplication::on_handle_local_options(const Glib::RefPtr<Glib::VariantDic
     if (options->contains("shell"))          _use_shell = true;
     if (options->contains("pipe"))           _use_pipe  = true;
     if (options->contains("pipe-mode"))      _use_pipe_mode = true;
+    if (options->contains("delegate-undo-stack")) _delegate_undo = true;
 
     // Enable auto-export
     if (options->contains("export-filename")  ||

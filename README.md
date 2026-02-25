@@ -163,3 +163,34 @@ a `CLOSE` command from stdin.
 ```
 
 (`→` = stdin to Inkscape, `←` = stdout from Inkscape)
+
+### `--delegate-undo-stack`
+
+When used together with `--pipe-mode`, this option delegates undo/redo to
+the controlling process:
+
+```
+inkscape --pipe-mode --delegate-undo-stack
+```
+
+Instead of maintaining an internal undo stack, Inkscape sends `UNDO` and
+`REDO` messages to stdout when the user presses Ctrl+Z / Ctrl+Y (or uses
+the Edit menu). The controlling process is responsible for tracking history
+and responding with the appropriate `LOAD` command.
+
+**stdout ← Inkscape (additional messages):**
+
+```
+UNDO <window-id>
+REDO <window-id>
+```
+
+Behavior changes with `--delegate-undo-stack`:
+- Undo/Redo buttons and menu items are always enabled
+- Ctrl+Z / Ctrl+Y emit protocol messages instead of modifying the document
+- The Undo History dialog is hidden
+- `SAVE` messages are no longer emitted for undo/redo operations (since
+  the internal undo stack is not used)
+
+The controlling process should maintain its own history of `SAVE` snapshots
+and `LOAD` the appropriate version when it receives `UNDO` or `REDO`.

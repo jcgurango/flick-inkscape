@@ -454,11 +454,10 @@ sp_file_save_document(Gtk::Window &parentWindow, SPDocument *doc)
 {
     PipeMode *pm = PipeMode::instance();
     if (pm && pm->is_pipe_document(doc)) {
-        pm->write_save(doc);
-        doc->setModifiedSinceSave(false);
+        // Changes are streamed automatically — nothing to do
         if (SP_ACTIVE_DESKTOP) {
             SP_ACTIVE_DESKTOP->messageStack()->flash(
-                Inkscape::NORMAL_MESSAGE, _("Document saved to pipe."));
+                Inkscape::NORMAL_MESSAGE, _("All changes are streamed in pipe mode."));
         }
         return true;
     }

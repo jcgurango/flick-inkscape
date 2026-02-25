@@ -39,9 +39,10 @@ Build command to avoid the poppler madness (MSYS2): cmake -G Ninja -DCMAKE_INSTA
 ## Pipe Mode
 
 `--pipe-mode` turns Inkscape into a pipe-controlled GUI editor. An external
-process manages windows and loads SVG documents via stdin, and receives save
-events and window-close notifications via stdout. This enables programmatic
-integration with other tools while keeping the full Inkscape GUI.
+process manages windows and loads SVG documents via stdin, and receives
+every document change and window-close notifications via stdout. This
+enables programmatic integration with other tools while keeping the full
+Inkscape GUI.
 
 ```
 inkscape --pipe-mode
@@ -100,7 +101,8 @@ OPEN <window-id>
 
 The integer `<window-id>` identifies this window in all subsequent commands.
 
-**SAVE** — The user saved a document (Ctrl+S or File → Save).
+**SAVE** — The document changed (emitted after every undo-committed
+operation: edits, undo, redo).
 
 ```
 SAVE <window-id> content-length:<N>
@@ -109,9 +111,11 @@ SAVE <window-id> content-length:<N>
 ```
 
 The format mirrors `LOAD`. The filename is whatever was last set by `LOAD`
-for that window. "Save As" is disabled for pipe-mode windows (the user is
-prompted to use "Save a Copy" instead, which saves to disk without
-affecting the pipe).
+for that window. A `SAVE` is emitted after each logical user action (not
+during intermediate states like mid-drag). Documents in pipe mode have no
+dirty/clean state — Ctrl+S is a no-op and there are no save prompts.
+"Save As" is disabled (the user is prompted to use "Save a Copy" instead,
+which saves to disk without affecting the pipe).
 
 **CLOSE** — The user closed a window (via the window's close button or
 File → Close).
@@ -128,7 +132,8 @@ a `CLOSE` command from stdin.
 - Inkscape stays alive as long as stdin is open or any pipe-mode windows
   remain, even after stdin reaches EOF.
 - Closing stdin (EOF) does not close existing windows — the user can
-  continue editing and saving.
+  continue editing. Changes are still streamed to stdout until the
+  pipe is closed.
 - Window IDs are monotonically increasing integers starting at 1 and are
   never reused within a session.
 
@@ -142,8 +147,12 @@ a `CLOSE` command from stdin.
 →  <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
 →    <rect width="100" height="100" fill="red"/>
 →  </svg>
-                          (user edits the drawing, presses Ctrl+S)
+                          (user moves the rectangle)
 ←  SAVE 1 content-length:198
+←  drawing.svg
+←  <svg xmlns="http://www.w3.org/2000/svg" ...> ... </svg>
+                          (user changes fill color)
+←  SAVE 1 content-length:205
 ←  drawing.svg
 ←  <svg xmlns="http://www.w3.org/2000/svg" ...> ... </svg>
 →  OPEN

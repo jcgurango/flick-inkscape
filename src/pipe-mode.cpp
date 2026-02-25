@@ -9,7 +9,7 @@
  *
  * Protocol (stdout):
  *   OPEN <id>                         — response to OPEN
- *   SAVE <id> content-length:<N>\n<filename>\n<N bytes SVG>  — user saved (Ctrl+S)
+ *   SAVE <id> content-length:<N>\n<filename>\n<N bytes SVG>  — emitted on every document change
  *   CLOSE <id>                        — user closed window
  *
  * Copyright (C) 2026 Authors
@@ -26,6 +26,29 @@
 #include "inkscape-application.h"
 #include "inkscape-window.h"
 #include "xml/repr.h"
+
+// --- Undo observer that forwards all state changes to PipeMode ---
+
+class PipeMode::PipeUndoObserver : public Inkscape::UndoStackObserver
+{
+public:
+    PipeUndoObserver(PipeMode *pm, SPDocument *doc)
+        : UndoStackObserver(), _pm(pm), _doc(doc) {}
+
+    // Commits are handled by commit_signal (which fires after setModifiedSinceSave)
+    void notifyUndoCommitEvent(Inkscape::Event *) override {}
+    // Undo/redo fire after setModifiedSinceSave, so we can handle them here
+    void notifyUndoEvent(Inkscape::Event *) override       { _pm->on_document_changed(_doc); }
+    void notifyRedoEvent(Inkscape::Event *) override       { _pm->on_document_changed(_doc); }
+    void notifyClearUndoEvent() override {}
+    void notifyClearRedoEvent() override {}
+
+private:
+    PipeMode *_pm;
+    SPDocument *_doc;
+};
+
+// ---
 
 PipeMode *PipeMode::_instance = nullptr;
 
@@ -64,6 +87,16 @@ void PipeMode::stop()
         _reader_thread.detach();
     }
 
+    // Disconnect all observers and signal connections before shutdown
+    for (auto &[doc, conn] : _commit_connections) {
+        conn.disconnect();
+    }
+    _commit_connections.clear();
+    for (auto &[doc, obs] : _observers) {
+        doc->removeUndoObserver(*obs);
+    }
+    _observers.clear();
+
     auto app = InkscapeApplication::instance();
     if (app && app->gio_app()) {
         app->gio_app()->release();
@@ -74,11 +107,10 @@ void PipeMode::stop()
 
 void PipeMode::reader_thread_func(Inkscape::Async::Channel::Source source)
 {
-    enum class State { COMMAND, LOAD_FILENAME, LOAD_CONTENT };
+    enum class State { COMMAND, LOAD_FILENAME };
     State state = State::COMMAND;
     int load_window_id = 0;
     size_t load_content_length = 0;
-    std::string load_filename;
 
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -131,7 +163,7 @@ void PipeMode::reader_thread_func(Inkscape::Async::Channel::Source source)
         }
 
         case State::LOAD_FILENAME: {
-            load_filename = line;
+            std::string filename = line;
 
             // Read exactly load_content_length bytes of SVG data
             std::string svg_data(load_content_length, '\0');
@@ -146,10 +178,8 @@ void PipeMode::reader_thread_func(Inkscape::Async::Channel::Source source)
             }
 
             int wid = load_window_id;
-            std::string fname = std::move(load_filename);
-            std::string data = std::move(svg_data);
-            source.run([this, wid, fname = std::move(fname),
-                        data = std::move(data)]() mutable {
+            source.run([this, wid, fname = std::move(filename),
+                        data = std::move(svg_data)]() mutable {
                 handle_load(wid, std::move(fname), std::move(data));
             });
 
@@ -190,6 +220,11 @@ void PipeMode::handle_open()
     _window_to_id[window] = id;
     _doc_to_id[doc] = id;
 
+    connect_document(doc);
+
+    // Document starts clean
+    doc->setModifiedSinceSave(false);
+
     write_line("OPEN " + std::to_string(id));
 }
 
@@ -218,13 +253,24 @@ void PipeMode::handle_load(int window_id, std::string filename, std::string svg_
     double zoom = desktop->current_zoom();
     Geom::Point center = desktop->current_center();
 
+    // Suppress SAVE emission during swap — the consumer already has this content
+    _loading = true;
+
+    // Disconnect observer from old doc, swap, connect to new doc
+    disconnect_document(old_doc);
+    _doc_to_id.erase(old_doc);
+
     app->document_swap(window, new_doc);
+
+    _doc_to_id[new_doc] = window_id;
+    connect_document(new_doc);
 
     desktop->zoom_absolute(center, zoom, false);
 
-    // Update mappings
-    _doc_to_id.erase(old_doc);
-    _doc_to_id[new_doc] = window_id;
+    // New content starts clean
+    new_doc->setModifiedSinceSave(false);
+
+    _loading = false;
 
     // Close old document if no other windows reference it
     if (app->document_window_count(old_doc) == 0) {
@@ -251,31 +297,12 @@ void PipeMode::handle_close(int window_id)
     _closing_programmatically.erase(window_id);
 }
 
-// --- Called by inkscape-application on window destruction ---
+// --- Document change observer callback ---
 
-void PipeMode::on_window_destroyed(InkscapeWindow *window)
+void PipeMode::on_document_changed(SPDocument *doc)
 {
-    auto it = _window_to_id.find(window);
-    if (it == _window_to_id.end()) return;
+    if (_loading) return;
 
-    int id = it->second;
-
-    // Clean up mappings
-    SPDocument *doc = window->get_document();
-    if (doc) _doc_to_id.erase(doc);
-    _id_to_window.erase(id);
-    _window_to_id.erase(it);
-
-    // Emit CLOSE only if the user closed it (not us via handle_close)
-    if (_closing_programmatically.count(id) == 0) {
-        write_line("CLOSE " + std::to_string(id));
-    }
-}
-
-// --- Save interception (called from file.cpp) ---
-
-void PipeMode::write_save(SPDocument *doc)
-{
     auto it = _doc_to_id.find(doc);
     if (it == _doc_to_id.end()) return;
 
@@ -287,6 +314,62 @@ void PipeMode::write_save(SPDocument *doc)
     write_message("SAVE " + std::to_string(window_id) +
                       " content-length:" + std::to_string(svg_content.bytes()),
                   filename, svg_content);
+
+    // Keep the document permanently clean — no dirty indicator, no save prompts
+    doc->setModifiedSinceSave(false);
+}
+
+// --- Document signal management ---
+
+void PipeMode::connect_document(SPDocument *doc)
+{
+    // Observer for undo/redo (fires after setModifiedSinceSave)
+    auto obs = std::make_unique<PipeUndoObserver>(this, doc);
+    doc->addUndoObserver(*obs);
+    _observers[doc] = std::move(obs);
+
+    // commit_signal for new commits (fires after setModifiedSinceSave)
+    _commit_connections[doc] = doc->connectCommit(
+        [this, doc]() { on_document_changed(doc); });
+}
+
+void PipeMode::disconnect_document(SPDocument *doc)
+{
+    auto cit = _commit_connections.find(doc);
+    if (cit != _commit_connections.end()) {
+        cit->second.disconnect();
+        _commit_connections.erase(cit);
+    }
+
+    auto it = _observers.find(doc);
+    if (it != _observers.end()) {
+        doc->removeUndoObserver(*it->second);
+        _observers.erase(it);
+    }
+}
+
+// --- Called by inkscape-application on window destruction ---
+
+void PipeMode::on_window_destroyed(InkscapeWindow *window)
+{
+    auto it = _window_to_id.find(window);
+    if (it == _window_to_id.end()) return;
+
+    int id = it->second;
+
+    // Clean up observer and mappings
+    SPDocument *doc = window->get_document();
+    if (doc) {
+        disconnect_document(doc);
+        _doc_to_id.erase(doc);
+    }
+    _id_to_window.erase(id);
+    _window_to_id.erase(it);
+
+    // Emit CLOSE only if the user closed it (not us via handle_close)
+    if (_closing_programmatically.count(id) == 0) {
+        write_line("CLOSE " + std::to_string(id));
+    }
 }
 
 bool PipeMode::is_pipe_document(SPDocument *doc) const

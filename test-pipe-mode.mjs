@@ -19,8 +19,9 @@ const svg1_updated = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height
   <text x="100" y="110" text-anchor="middle" font-size="20" fill="white">Updated!</text>
 </svg>`;
 
-// Track open windows
+// Track open windows and change count
 const windows = new Map(); // id -> { filename }
+let saveCount = 0;
 
 function sendOpen(proc) {
   console.log(`\n>>> OPEN`);
@@ -135,11 +136,9 @@ parseStdout(proc.stdout, {
     console.log(`\n<<< CLOSE ${id}  (${windows.size} window(s) open)`);
   },
   onSave(id, filename, content) {
+    saveCount++;
     console.log(
-      `\n<<< SAVE window ${id} "${filename}" (${Buffer.byteLength(content)} bytes)`
-    );
-    console.log(
-      `    First 200 chars: ${content.slice(0, 200).replace(/\n/g, "\\n")}...`
+      `\n<<< SAVE #${saveCount} window ${id} "${filename}" (${Buffer.byteLength(content)} bytes)`
     );
   },
 });
@@ -160,6 +159,8 @@ Commands:
   close <id>        CLOSE window <id>
   eof               Close stdin (Inkscape keeps running)
   quit              Kill Inkscape and exit
+
+  (SAVE messages stream automatically on every edit — just watch)
 `);
   rl.question("> ", (answer) => {
     const parts = answer.trim().split(/\s+/);

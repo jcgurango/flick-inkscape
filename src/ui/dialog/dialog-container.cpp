@@ -28,6 +28,7 @@
 #include "enums.h"
 #include "inkscape.h"
 #include "inkscape-application.h"
+#include "pipe-mode.h"
 #include "inkscape-window.h"
 #include "ui/dialog/clonetiler.h"
 #include "ui/dialog/dialog-data.h"
@@ -274,6 +275,12 @@ DialogBase* DialogContainer::find_existing_dialog(const Glib::ustring& dialog_ty
  */
 void DialogContainer::new_dialog(const Glib::ustring& dialog_type, DialogNotebook *notebook)
 {
+    // Hide Undo History when undo is delegated to pipe-mode controller
+    PipeMode *pm = PipeMode::instance();
+    if (pm && pm->delegate_undo() && dialog_type == "UndoHistory") {
+        return;
+    }
+
     columns->ensure_multipaned_children();
 
     // Limit each container to containing one of any type of dialog.

@@ -29,6 +29,7 @@
 #include "enums.h"
 #include "inkscape.h"
 #include "inkscape-window.h"
+#include "pipe-mode.h"
 #include "ui/column-menu-builder.h"
 #include "ui/dialog/dialog-base.h"
 #include "ui/dialog/dialog-data.h"
@@ -120,6 +121,11 @@ DialogNotebook::DialogNotebook(DialogContainer *container)
         const auto& key = kv.first;
         const auto& data = kv.second;
         if (data.category == DialogData::Other) {
+            continue;
+        }
+        // Hide Undo History when undo is delegated to pipe-mode controller
+        PipeMode *pm = PipeMode::instance();
+        if (pm && pm->delegate_undo() && key == "UndoHistory") {
             continue;
         }
         // for sorting dialogs alphabetically, remove '_' (used for accelerators)

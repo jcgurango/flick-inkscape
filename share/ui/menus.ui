@@ -797,6 +797,11 @@
           <attribute name="icon">object-group</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">Create Cli_p</attribute>
+          <attribute name="action">app.selection-create-clip</attribute>
+          <attribute name="icon">edit-paste</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">_Ungroup</attribute>
           <attribute name="action">app.selection-ungroup</attribute>
           <attribute name="icon">object-ungroup</attribute>

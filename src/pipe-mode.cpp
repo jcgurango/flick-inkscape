@@ -108,10 +108,12 @@ void PipeMode::stop()
 
 void PipeMode::reader_thread_func(Inkscape::Async::Channel::Source source)
 {
-    enum class State { COMMAND, LOAD_FILENAME };
+    enum class State { COMMAND, LOAD_FILENAME, CLIP_NAME };
     State state = State::COMMAND;
     int load_window_id = 0;
     size_t load_content_length = 0;
+    std::string clip_id;
+    size_t clip_content_length = 0;
 
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -157,6 +159,35 @@ void PipeMode::reader_thread_func(Inkscape::Async::Channel::Source source)
                     std::cerr << "PipeMode: Invalid CLOSE ID: " << line << std::endl;
                 }
 
+            } else if (line.compare(0, 5, "CLIP ") == 0) {
+                // CLIP <id> content-length:<N>
+                auto rest = line.substr(5);
+                auto sp = rest.find(' ');
+                if (sp == std::string::npos) {
+                    std::cerr << "PipeMode: Malformed CLIP: " << line << std::endl;
+                    break;
+                }
+                clip_id = rest.substr(0, sp);
+                const std::string cl_prefix = "content-length:";
+                auto cl_part = rest.substr(sp + 1);
+                if (cl_part.compare(0, cl_prefix.size(), cl_prefix) != 0) {
+                    std::cerr << "PipeMode: Missing content-length in: " << line << std::endl;
+                    break;
+                }
+                try {
+                    clip_content_length = std::stoul(cl_part.substr(cl_prefix.size()));
+                } catch (...) {
+                    std::cerr << "PipeMode: Invalid content-length in: " << line << std::endl;
+                    break;
+                }
+                state = State::CLIP_NAME;
+
+            } else if (line.compare(0, 6, "UCLIP ") == 0) {
+                std::string uid = line.substr(6);
+                source.run([this, uid = std::move(uid)]() mutable {
+                    handle_uclip(std::move(uid));
+                });
+
             } else if (!line.empty()) {
                 std::cerr << "PipeMode: Unknown command: " << line << std::endl;
             }
@@ -182,6 +213,30 @@ void PipeMode::reader_thread_func(Inkscape::Async::Channel::Source source)
             source.run([this, wid, fname = std::move(filename),
                         data = std::move(svg_data)]() mutable {
                 handle_load(wid, std::move(fname), std::move(data));
+            });
+
+            state = State::COMMAND;
+            break;
+        }
+
+        case State::CLIP_NAME: {
+            std::string name = line;
+
+            // Read exactly clip_content_length bytes of SVG data
+            std::string svg_data(clip_content_length, '\0');
+            if (clip_content_length > 0) {
+                std::cin.read(&svg_data[0], clip_content_length);
+                if (std::cin.gcount() != static_cast<std::streamsize>(clip_content_length)) {
+                    std::cerr << "PipeMode: Short read for CLIP, expected " << clip_content_length
+                              << " bytes, got " << std::cin.gcount() << std::endl;
+                    state = State::COMMAND;
+                    break;
+                }
+            }
+
+            source.run([this, cid = std::move(clip_id), cname = std::move(name),
+                        data = std::move(svg_data)]() mutable {
+                handle_clip(std::move(cid), std::move(cname), std::move(data));
             });
 
             state = State::COMMAND;
@@ -313,6 +368,21 @@ void PipeMode::handle_close(int window_id)
     }
 
     _closing_programmatically.erase(window_id);
+}
+
+// --- Clip handlers ---
+
+void PipeMode::handle_clip(std::string clip_id, std::string clip_name, std::string svg_data)
+{
+    _clips[clip_id] = ClipData{clip_id, clip_name, std::move(svg_data)};
+    _clips_changed.emit();
+}
+
+void PipeMode::handle_uclip(std::string clip_id)
+{
+    if (_clips.erase(clip_id) > 0) {
+        _clips_changed.emit();
+    }
 }
 
 // --- Document change observer callback ---

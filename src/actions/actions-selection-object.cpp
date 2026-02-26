@@ -24,6 +24,7 @@
 #include "document-undo.h"
 #include "inkscape-application.h"
 #include "page-manager.h"
+#include "pipe-mode.h"
 #include "selection.h"
 
 #include "ui/dialog/dialog-container.h" // Used by select_object_link() to open dialog to add hyperlink.
@@ -35,6 +36,26 @@ select_object_group(InkscapeApplication* app)
     Inkscape::Selection *selection = app->get_active_selection();
     selection->group();
     Inkscape::DocumentUndo::done(selection->document(), C_("Verb", "Group"), INKSCAPE_ICON("object-group"));
+}
+
+void
+select_object_create_clip(InkscapeApplication* app)
+{
+    auto *pm = PipeMode::instance();
+    if (!pm) return;
+
+    Inkscape::Selection *selection = app->get_active_selection();
+    if (!selection || selection->isEmpty()) return;
+
+    auto *group_node = selection->group();
+    if (!group_node) return;
+
+    Inkscape::DocumentUndo::done(selection->document(), _("Create Clip"), INKSCAPE_ICON("object-group"));
+
+    const char *id = group_node->attribute("id");
+    if (id) {
+        pm->write_line("NCLIP " + std::string(id));
+    }
 }
 
 void
@@ -145,6 +166,7 @@ std::vector<std::vector<Glib::ustring>> raw_data_selection_object =
 {
     // clang-format off
     { "app.selection-group",                NC_("Verb", "Group"),                        "Select",   N_("Group selected objects")},
+    { "app.selection-create-clip",          N_("Create Clip"),                           "Select",   N_("Group selected objects and create a clip for pipe mode")},
     { "app.selection-ungroup",              N_("Ungroup"),                               "Select",   N_("Ungroup selected objects")},
     { "app.selection-ungroup-pop",          N_("Pop Selected Objects out of Group"),     "Select",   N_("Pop selected objects out of group")},
     { "app.selection-link",                 NC_("Hyperlink|Verb", "Link"),               "Select",   N_("Add an anchor to selected objects")},
@@ -170,6 +192,7 @@ add_actions_selection_object(InkscapeApplication* app)
     // clang-format off
     // See actions-layer.cpp for "enter-group" and "exit-group".
     gapp->add_action( "selection-group",              sigc::bind(sigc::ptr_fun(&select_object_group),           app));
+    gapp->add_action( "selection-create-clip",        sigc::bind(sigc::ptr_fun(&select_object_create_clip),     app));
     gapp->add_action( "selection-ungroup",            sigc::bind(sigc::ptr_fun(&select_object_ungroup),         app));
     gapp->add_action( "selection-ungroup-pop",        sigc::bind(sigc::ptr_fun(&select_object_ungroup_pop),     app));
     gapp->add_action( "selection-link",               sigc::bind(sigc::ptr_fun(&select_object_link),            app));

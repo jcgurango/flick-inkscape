@@ -116,6 +116,7 @@ set(ui_SRC
 	dialog/about.cpp
 	dialog/align-and-distribute.cpp
 	dialog/calligraphic-profile-rename.cpp
+	dialog/clip-panel.cpp
 	dialog/clonetiler.cpp
 	dialog/color-item.cpp
 	dialog/command-palette.cpp
@@ -319,6 +320,7 @@ set(ui_SRC
 	dialog/align-and-distribute.h
 	dialog/arrange-tab.h
 	dialog/calligraphic-profile-rename.h
+	dialog/clip-panel.h
 	dialog/clonetiler.h
 	dialog/color-item.h
 	dialog/command-palette.h

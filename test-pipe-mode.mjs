@@ -19,6 +19,10 @@ const svg1_updated = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height
   <text x="100" y="110" text-anchor="middle" font-size="20" fill="white">Updated!</text>
 </svg>`;
 
+const clipStar = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+  <polygon points="50,5 20,99 95,39 5,39 80,99" fill="gold" stroke="black" stroke-width="2"/>
+</svg>`;
+
 // Track open windows and change count
 const windows = new Map(); // id -> { filename }
 let saveCount = 0;
@@ -39,6 +43,19 @@ function sendLoad(proc, windowId, filename, svgData) {
 function sendClose(proc, windowId) {
   console.log(`\n>>> CLOSE ${windowId}`);
   proc.stdin.write(`CLOSE ${windowId}\n`);
+}
+
+function sendClip(proc, clipId, clipName, svgData) {
+  const buf = Buffer.from(svgData, "utf-8");
+  const header = `CLIP ${clipId} content-length:${buf.length}\n${clipName}\n`;
+  console.log(`\n>>> CLIP "${clipId}" name="${clipName}" (${buf.length} bytes)`);
+  proc.stdin.write(header);
+  proc.stdin.write(buf);
+}
+
+function sendUclip(proc, clipId) {
+  console.log(`\n>>> UCLIP ${clipId}`);
+  proc.stdin.write(`UCLIP ${clipId}\n`);
 }
 
 // Parse stdout protocol messages
@@ -82,6 +99,13 @@ function parseStdout(stream, handlers) {
         const redoMatch = line.match(/^REDO (\d+)$/);
         if (redoMatch) {
           handlers.onRedo(parseInt(redoMatch[1]));
+          continue;
+        }
+
+        // NCLIP <element-id>
+        const nclipMatch = line.match(/^NCLIP (.+)$/);
+        if (nclipMatch) {
+          handlers.onNclip(nclipMatch[1]);
           continue;
         }
 
@@ -156,6 +180,9 @@ parseStdout(proc.stdout, {
       `\n<<< SAVE #${saveCount} window ${id} "${filename}" (${Buffer.byteLength(content)} bytes)`
     );
   },
+  onNclip(elementId) {
+    console.log(`\n<<< NCLIP element "${elementId}"`);
+  },
   onUndo(id) {
     console.log(`\n<<< UNDO window ${id}`);
   },
@@ -178,6 +205,8 @@ Commands:
   load2 <id>        LOAD blue circle SVG into window <id> as "circle.svg"
   load3 <id>        LOAD green rect SVG into window <id> as "updated.svg"
   close <id>        CLOSE window <id>
+  clip <id> <name>  Register a clip (gold star SVG)
+  uclip <id>        Remove a clip
   eof               Close stdin (Inkscape keeps running)
   quit              Kill Inkscape and exit
 
@@ -186,7 +215,7 @@ Commands:
   rl.question("> ", (answer) => {
     const parts = answer.trim().split(/\s+/);
     const cmd = parts[0];
-    const id = parseInt(parts[1]);
+    const id = parts[1];
 
     switch (cmd) {
       case "open":
@@ -194,19 +223,29 @@ Commands:
         break;
       case "load":
         if (!id) { console.log("Usage: load <window-id>"); break; }
-        sendLoad(proc, id, "test.svg", svg1);
+        sendLoad(proc, parseInt(id), "test.svg", svg1);
         break;
       case "load2":
         if (!id) { console.log("Usage: load2 <window-id>"); break; }
-        sendLoad(proc, id, "circle.svg", svg2);
+        sendLoad(proc, parseInt(id), "circle.svg", svg2);
         break;
       case "load3":
         if (!id) { console.log("Usage: load3 <window-id>"); break; }
-        sendLoad(proc, id, "updated.svg", svg1_updated);
+        sendLoad(proc, parseInt(id), "updated.svg", svg1_updated);
         break;
       case "close":
         if (!id) { console.log("Usage: close <window-id>"); break; }
-        sendClose(proc, id);
+        sendClose(proc, parseInt(id));
+        break;
+      case "clip": {
+        if (!id) { console.log("Usage: clip <id> <name>"); break; }
+        const clipName = parts.slice(2).join(" ") || id;
+        sendClip(proc, id, clipName, clipStar);
+        break;
+      }
+      case "uclip":
+        if (!id) { console.log("Usage: uclip <id>"); break; }
+        sendUclip(proc, id);
         break;
       case "eof":
         console.log(">>> Closing stdin (EOF)");

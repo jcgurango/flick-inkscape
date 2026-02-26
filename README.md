@@ -91,6 +91,30 @@ CLOSE <window-id>
 
 The window is closed without a save-changes prompt.
 
+**CLIP** — Register (or update) a clip in the Clip Panel.
+
+```
+CLIP <clip-id> content-length:<N>
+<clip-name>
+<N bytes of SVG data>
+```
+
+- `<clip-id>` is an opaque string chosen by the controller. If a clip with
+  the same ID already exists, it is replaced.
+- `<clip-name>` is the display name shown in the Clip Panel.
+- The SVG data follows immediately after the name line's newline.
+
+Clips appear in the Clip Panel dialog (only visible in pipe mode). Users
+can drag clips from the panel onto the canvas to insert them.
+
+**UCLIP** — Remove a clip from the Clip Panel.
+
+```
+UCLIP <clip-id>
+```
+
+If the clip ID does not exist, the command is silently ignored.
+
 #### stdout ← Inkscape
 
 **OPEN** — A new window was created (response to an `OPEN` command).
@@ -116,6 +140,18 @@ during intermediate states like mid-drag). Documents in pipe mode have no
 dirty/clean state — Ctrl+S is a no-op and there are no save prompts.
 "Save As" is disabled (the user is prompted to use "Save a Copy" instead,
 which saves to disk without affecting the pipe).
+
+**NCLIP** — The user created a clip via Object → Create Clip. The selected
+objects are grouped and the group's SVG ID is reported.
+
+```
+NCLIP <element-id>
+```
+
+The `<element-id>` is the `id` attribute of the newly created `<svg:g>`
+element in the document. This is emitted after the group is created and
+the undo step is recorded (a `SAVE` will follow). Only available in pipe
+mode.
 
 **CLOSE** — The user closed a window (via the window's close button or
 File → Close).

@@ -30,6 +30,7 @@
 #include "inkscape-application.h"
 #include "pipe-mode.h"
 #include "inkscape-window.h"
+#include "ui/dialog/clip-panel.h"
 #include "ui/dialog/clonetiler.h"
 #include "ui/dialog/dialog-data.h"
 #include "ui/dialog/dialog-multipaned.h"
@@ -123,6 +124,7 @@ std::unique_ptr<DialogBase> DialogContainer::dialog_factory(Glib::ustring const 
 {
     // clang-format off
          if (dialog_type == "AlignDistribute")    return std::make_unique<ArrangeDialog>();
+    else if (dialog_type == "ClipPanel")          return std::make_unique<ClipPanel>();
     else if (dialog_type == "CloneTiler")         return std::make_unique<CloneTiler>();
     else if (dialog_type == "DocumentProperties") return std::make_unique<DocumentProperties>();
     else if (dialog_type == "DocumentResources")  return std::make_unique<DocumentResources>();
@@ -278,6 +280,11 @@ void DialogContainer::new_dialog(const Glib::ustring& dialog_type, DialogNoteboo
     // Hide Undo History when undo is delegated to pipe-mode controller
     PipeMode *pm = PipeMode::instance();
     if (pm && pm->delegate_undo() && dialog_type == "UndoHistory") {
+        return;
+    }
+
+    // Clip Panel is only available in pipe mode
+    if (!PipeMode::instance() && dialog_type == "ClipPanel") {
         return;
     }
 

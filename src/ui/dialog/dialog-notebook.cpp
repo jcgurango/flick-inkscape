@@ -128,6 +128,10 @@ DialogNotebook::DialogNotebook(DialogContainer *container)
         if (pm && pm->delegate_undo() && key == "UndoHistory") {
             continue;
         }
+        // Clip Panel is only available in pipe mode
+        if (!PipeMode::instance() && key == "ClipPanel") {
+            continue;
+        }
         // for sorting dialogs alphabetically, remove '_' (used for accelerators)
         Glib::ustring order = data.label; // Already translated
         auto underscore = order.find('_');

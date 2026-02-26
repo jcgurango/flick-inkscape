@@ -16,6 +16,7 @@
 #include <thread>
 
 #include <sigc++/connection.h>
+#include <sigc++/signal.h>
 
 #include "async/channel.h"
 #include "undo-stack-observer.h"
@@ -46,6 +47,14 @@ public:
 
     void write_line(const std::string &line);
 
+    struct ClipData {
+        std::string id;
+        std::string name;
+        std::string svg_data;
+    };
+    const std::map<std::string, ClipData> &clips() const { return _clips; }
+    sigc::signal<void()> &signal_clips_changed() { return _clips_changed; }
+
     static PipeMode *instance() { return _instance; }
 
 private:
@@ -55,6 +64,8 @@ private:
     void handle_open();
     void handle_load(int window_id, std::string filename, std::string svg_data);
     void handle_close(int window_id);
+    void handle_clip(std::string clip_id, std::string clip_name, std::string svg_data);
+    void handle_uclip(std::string clip_id);
 
     // Called by the undo observer on commit/undo/redo
     void on_document_changed(SPDocument *doc);
@@ -84,6 +95,9 @@ private:
     bool _loading = false;
     // Suppress setup_view window geometry changes when filename hasn't changed
     bool _preserve_geometry = false;
+
+    std::map<std::string, ClipData> _clips;
+    sigc::signal<void()> _clips_changed;
 
     Inkscape::Async::Channel::Dest _channel_dest;
     std::mutex _stdout_mutex;

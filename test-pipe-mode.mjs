@@ -58,6 +58,16 @@ function sendUclip(proc, clipId) {
   proc.stdin.write(`UCLIP ${clipId}\n`);
 }
 
+function sendDirty(proc, windowId) {
+  console.log(`\n>>> DIRTY ${windowId}`);
+  proc.stdin.write(`DIRTY ${windowId}\n`);
+}
+
+function sendUndirty(proc, windowId) {
+  console.log(`\n>>> UNDIRTY ${windowId}`);
+  proc.stdin.write(`UNDIRTY ${windowId}\n`);
+}
+
 // Parse stdout protocol messages
 function parseStdout(stream, handlers) {
   let buffer = "";
@@ -99,6 +109,13 @@ function parseStdout(stream, handlers) {
         const redoMatch = line.match(/^REDO (\d+)$/);
         if (redoMatch) {
           handlers.onRedo(parseInt(redoMatch[1]));
+          continue;
+        }
+
+        // REQUESTSAVE <id>
+        const reqsaveMatch = line.match(/^REQUESTSAVE (\d+)$/);
+        if (reqsaveMatch) {
+          handlers.onRequestSave(parseInt(reqsaveMatch[1]));
           continue;
         }
 
@@ -180,6 +197,9 @@ parseStdout(proc.stdout, {
       `\n<<< SAVE #${saveCount} window ${id} "${filename}" (${Buffer.byteLength(content)} bytes)`
     );
   },
+  onRequestSave(id) {
+    console.log(`\n<<< REQUESTSAVE window ${id}`);
+  },
   onNclip(elementId) {
     console.log(`\n<<< NCLIP element "${elementId}"`);
   },
@@ -207,6 +227,8 @@ Commands:
   close <id>        CLOSE window <id>
   clip <id> <name>  Register a clip (gold star SVG)
   uclip <id>        Remove a clip
+  dirty <id>        Mark window as dirty (shows asterisk)
+  undirty <id>      Mark window as clean (removes asterisk)
   eof               Close stdin (Inkscape keeps running)
   quit              Kill Inkscape and exit
 
@@ -246,6 +268,14 @@ Commands:
       case "uclip":
         if (!id) { console.log("Usage: uclip <id>"); break; }
         sendUclip(proc, id);
+        break;
+      case "dirty":
+        if (!id) { console.log("Usage: dirty <window-id>"); break; }
+        sendDirty(proc, parseInt(id));
+        break;
+      case "undirty":
+        if (!id) { console.log("Usage: undirty <window-id>"); break; }
+        sendUndirty(proc, parseInt(id));
         break;
       case "eof":
         console.log(">>> Closing stdin (EOF)");

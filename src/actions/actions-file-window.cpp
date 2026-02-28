@@ -31,6 +31,11 @@
 void
 document_new(InkscapeWindow* win)
 {
+    if (PipeMode::instance()) {
+        SP_ACTIVE_DESKTOP->messageStack()->flash(
+            Inkscape::WARNING_MESSAGE, _("New document is disabled in pipe mode."));
+        return;
+    }
     sp_file_new_default();
 }
 
@@ -56,6 +61,14 @@ document_revert(InkscapeWindow* win)
 void
 document_save(InkscapeWindow* win)
 {
+    PipeMode *pm = PipeMode::instance();
+    if (pm && pm->is_pipe_document(win->get_document())) {
+        int id = pm->get_window_id(win->get_document());
+        if (id >= 0) {
+            pm->write_line("REQUESTSAVE " + std::to_string(id));
+        }
+        return;
+    }
     // Save File
     sp_file_save(*win, nullptr, nullptr);
 }

@@ -115,6 +115,23 @@ UCLIP <clip-id>
 
 If the clip ID does not exist, the command is silently ignored.
 
+**DIRTY** — Mark a window's document as modified (shows `*` in title bar).
+
+```
+DIRTY <window-id>
+```
+
+**UNDIRTY** — Mark a window's document as clean (removes `*` from title bar).
+
+```
+UNDIRTY <window-id>
+```
+
+These commands let the controller manage the save-state indicator. By
+default, pipe-mode documents are always clean (no asterisk). Use `DIRTY`
+after receiving a `SAVE` to indicate unsaved changes, and `UNDIRTY` after
+persisting to clear the indicator.
+
 #### stdout ← Inkscape
 
 **OPEN** — A new window was created (response to an `OPEN` command).
@@ -136,10 +153,19 @@ SAVE <window-id> content-length:<N>
 
 The format mirrors `LOAD`. The filename is whatever was last set by `LOAD`
 for that window. A `SAVE` is emitted after each logical user action (not
-during intermediate states like mid-drag). Documents in pipe mode have no
-dirty/clean state — Ctrl+S is a no-op and there are no save prompts.
+during intermediate states like mid-drag).
 "Save As" is disabled (the user is prompted to use "Save a Copy" instead,
 which saves to disk without affecting the pipe).
+
+**REQUESTSAVE** — The user pressed Ctrl+S or used File → Save.
+
+```
+REQUESTSAVE <window-id>
+```
+
+The controller should persist the latest `SAVE` content and then send
+`UNDIRTY <window-id>` to clear the title bar indicator. File → New is
+disabled in pipe mode.
 
 **NCLIP** — The user created a clip via Object → Create Clip. The selected
 objects are grouped and the group's SVG ID is reported.

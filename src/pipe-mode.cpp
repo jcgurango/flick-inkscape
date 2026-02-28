@@ -188,6 +188,22 @@ void PipeMode::reader_thread_func(Inkscape::Async::Channel::Source source)
                     handle_uclip(std::move(uid));
                 });
 
+            } else if (line.compare(0, 6, "DIRTY ") == 0) {
+                try {
+                    int id = std::stoi(line.substr(6));
+                    source.run([this, id] { handle_dirty(id); });
+                } catch (...) {
+                    std::cerr << "PipeMode: Invalid DIRTY ID: " << line << std::endl;
+                }
+
+            } else if (line.compare(0, 8, "UNDIRTY ") == 0) {
+                try {
+                    int id = std::stoi(line.substr(8));
+                    source.run([this, id] { handle_undirty(id); });
+                } catch (...) {
+                    std::cerr << "PipeMode: Invalid UNDIRTY ID: " << line << std::endl;
+                }
+
             } else if (!line.empty()) {
                 std::cerr << "PipeMode: Unknown command: " << line << std::endl;
             }
@@ -382,6 +398,34 @@ void PipeMode::handle_uclip(std::string clip_id)
 {
     if (_clips.erase(clip_id) > 0) {
         _clips_changed.emit();
+    }
+}
+
+// --- Dirty state handlers ---
+
+void PipeMode::handle_dirty(int window_id)
+{
+    auto it = _id_to_window.find(window_id);
+    if (it == _id_to_window.end()) {
+        std::cerr << "PipeMode: Unknown window ID " << window_id << std::endl;
+        return;
+    }
+    SPDocument *doc = it->second->get_document();
+    if (doc) {
+        doc->setModifiedSinceSave(true);
+    }
+}
+
+void PipeMode::handle_undirty(int window_id)
+{
+    auto it = _id_to_window.find(window_id);
+    if (it == _id_to_window.end()) {
+        std::cerr << "PipeMode: Unknown window ID " << window_id << std::endl;
+        return;
+    }
+    SPDocument *doc = it->second->get_document();
+    if (doc) {
+        doc->setModifiedSinceSave(false);
     }
 }
 

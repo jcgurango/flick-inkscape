@@ -66,6 +66,8 @@ private:
     void handle_close(int window_id);
     void handle_clip(std::string clip_id, std::string clip_name, std::string svg_data);
     void handle_uclip(std::string clip_id);
+    void handle_dirty(int window_id);
+    void handle_undirty(int window_id);
 
     // Called by the undo observer on commit/undo/redo
     void on_document_changed(SPDocument *doc);

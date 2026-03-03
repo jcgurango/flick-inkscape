@@ -28,6 +28,7 @@
 #include "document-undo.h"
 #include "inkscape-application.h"
 #include "inkscape-window.h"
+#include "selection.h"
 #include "actions/actions-undo-document.h"
 #include "xml/node-observer.h"
 #include "xml/repr.h"
@@ -386,6 +387,16 @@ void PipeMode::handle_load(int window_id, std::string filename, std::string svg_
     double zoom = desktop->current_zoom();
     Geom::Point center = desktop->current_center();
 
+    // Save selected element IDs to restore after swap
+    std::vector<std::string> selected_ids;
+    if (auto *selection = desktop->getSelection()) {
+        for (auto *item : selection->items()) {
+            if (auto *id = item->getId()) {
+                selected_ids.push_back(id);
+            }
+        }
+    }
+
     // Suppress SAVE emission during swap
     _loading = true;
     // Preserve window geometry if the filename hasn't changed (e.g. undo/redo reload)
@@ -415,6 +426,17 @@ void PipeMode::handle_load(int window_id, std::string filename, std::string svg_
     // Restore zoom when geometry was preserved (filename unchanged)
     if (_preserve_geometry) {
         desktop->zoom_absolute(center, zoom, false);
+    }
+
+    // Restore selection by ID (best-effort: IDs that exist in new doc get selected)
+    if (!selected_ids.empty()) {
+        if (auto *selection = desktop->getSelection()) {
+            for (const auto &id : selected_ids) {
+                if (auto *obj = new_doc->getObjectById(id)) {
+                    selection->add(obj->getRepr());
+                }
+            }
+        }
     }
 
     // New content starts clean

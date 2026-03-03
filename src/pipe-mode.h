@@ -61,7 +61,7 @@ private:
     void reader_thread_func(Inkscape::Async::Channel::Source source);
 
     // Main-thread handlers dispatched from reader thread
-    void handle_open();
+    void handle_open(bool freeze_top = false);
     void handle_load(int window_id, std::string filename, std::string svg_data);
     void handle_close(int window_id);
     void handle_clip(std::string clip_id, std::string clip_name, std::string svg_data);
@@ -100,6 +100,13 @@ private:
 
     std::map<std::string, ClipData> _clips;
     sigc::signal<void()> _clips_changed;
+
+    // Freeze-top: prevent structural changes to root's direct children
+    class FreezeTopObserver;
+    std::set<int> _frozen_top_windows;
+    std::map<SPDocument *, std::unique_ptr<FreezeTopObserver>> _freeze_observers;
+    void attach_freeze_observer(SPDocument *doc);
+    void detach_freeze_observer(SPDocument *doc);
 
     Inkscape::Async::Channel::Dest _channel_dest;
     std::mutex _stdout_mutex;

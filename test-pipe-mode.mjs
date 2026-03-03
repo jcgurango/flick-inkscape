@@ -27,9 +27,10 @@ const clipStar = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="10
 const windows = new Map(); // id -> { filename }
 let saveCount = 0;
 
-function sendOpen(proc) {
-  console.log(`\n>>> OPEN`);
-  proc.stdin.write("OPEN\n");
+function sendOpen(proc, freezeTop = false) {
+  const cmd = freezeTop ? "OPEN freeze-top" : "OPEN";
+  console.log(`\n>>> ${cmd}`);
+  proc.stdin.write(`${cmd}\n`);
 }
 
 function sendLoad(proc, windowId, filename, svgData) {
@@ -221,6 +222,7 @@ Open windows: ${ids.length ? ids.join(", ") : "(none)"}
 
 Commands:
   open              OPEN a new window
+  openf             OPEN a new window with freeze-top
   load <id>         LOAD red rect SVG into window <id> as "test.svg"
   load2 <id>        LOAD blue circle SVG into window <id> as "circle.svg"
   load3 <id>        LOAD green rect SVG into window <id> as "updated.svg"
@@ -242,6 +244,9 @@ Commands:
     switch (cmd) {
       case "open":
         sendOpen(proc);
+        break;
+      case "openf":
+        sendOpen(proc, true);
         break;
       case "load":
         if (!id) { console.log("Usage: load <window-id>"); break; }

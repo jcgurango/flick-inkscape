@@ -21,11 +21,15 @@
 
 #include <iostream>
 
+#include <glibmm/main.h>
+
 #include "desktop.h"
 #include "document.h"
+#include "document-undo.h"
 #include "inkscape-application.h"
 #include "inkscape-window.h"
 #include "actions/actions-undo-document.h"
+#include "xml/node-observer.h"
 #include "xml/repr.h"
 
 // --- Undo observer that forwards all state changes to PipeMode ---
@@ -47,6 +51,44 @@ public:
 private:
     PipeMode *_pm;
     SPDocument *_doc;
+};
+
+// --- Freeze-top observer: prevents structural changes to root's children ---
+// Instead of reverting inside the callback (which crashes), we defer an undo
+// to an idle handler so the current tree mutation finishes cleanly first.
+
+class PipeMode::FreezeTopObserver : public Inkscape::XML::NodeObserver
+{
+public:
+    FreezeTopObserver(SPDocument *doc) : _doc(doc) {}
+
+    void notifyChildAdded(Inkscape::XML::Node &, Inkscape::XML::Node &,
+                          Inkscape::XML::Node *) override { schedule_revert(); }
+
+    void notifyChildRemoved(Inkscape::XML::Node &, Inkscape::XML::Node &,
+                            Inkscape::XML::Node *) override { schedule_revert(); }
+
+    void notifyChildOrderChanged(Inkscape::XML::Node &, Inkscape::XML::Node &,
+                                 Inkscape::XML::Node *, Inkscape::XML::Node *) override { schedule_revert(); }
+
+    void set_reverting(bool r) { _reverting = r; }
+
+private:
+    void schedule_revert()
+    {
+        if (_reverting || _pending) return;
+        _pending = true;
+        Glib::signal_idle().connect_once([this]() {
+            _reverting = true;
+            Inkscape::DocumentUndo::undo(_doc);
+            _reverting = false;
+            _pending = false;
+        });
+    }
+
+    SPDocument *_doc;
+    bool _reverting = false;
+    bool _pending = false;
 };
 
 // ---
@@ -89,6 +131,13 @@ void PipeMode::stop()
     }
 
     // Disconnect all observers and signal connections before shutdown
+    for (auto &[doc, obs] : _freeze_observers) {
+        auto *root = doc->getReprRoot();
+        if (root) root->removeObserver(*obs);
+    }
+    _freeze_observers.clear();
+    _frozen_top_windows.clear();
+
     for (auto &[doc, conn] : _commit_connections) {
         conn.disconnect();
     }
@@ -120,8 +169,9 @@ void PipeMode::reader_thread_func(Inkscape::Async::Channel::Source source)
         switch (state) {
 
         case State::COMMAND: {
-            if (line == "OPEN") {
-                source.run([this] { handle_open(); });
+            if (line == "OPEN" || line == "OPEN freeze-top") {
+                bool freeze = (line == "OPEN freeze-top");
+                source.run([this, freeze] { handle_open(freeze); });
 
             } else if (line.compare(0, 5, "LOAD ") == 0) {
                 // LOAD <id> content-length:<N>
@@ -269,7 +319,7 @@ void PipeMode::reader_thread_func(Inkscape::Async::Channel::Source source)
 
 // --- Main-thread handlers ---
 
-void PipeMode::handle_open()
+void PipeMode::handle_open(bool freeze_top)
 {
     auto app = InkscapeApplication::instance();
     if (!app) return;
@@ -300,6 +350,12 @@ void PipeMode::handle_open()
     // Force undo/redo always enabled when delegating (must be after _doc_to_id registration)
     if (_delegate_undo) {
         enable_undo_actions(doc, true, true);
+    }
+
+    // Freeze top-level structure if requested
+    if (freeze_top) {
+        _frozen_top_windows.insert(id);
+        attach_freeze_observer(doc);
     }
 
     write_line("OPEN " + std::to_string(id));
@@ -336,6 +392,12 @@ void PipeMode::handle_load(int window_id, std::string filename, std::string svg_
     const char *old_fname = old_doc->getDocumentFilename();
     _preserve_geometry = (old_fname && filename == old_fname);
 
+    // Detach freeze observer before swap (if any)
+    bool is_frozen = _frozen_top_windows.count(window_id) > 0;
+    if (is_frozen) {
+        detach_freeze_observer(old_doc);
+    }
+
     // Disconnect observer from old doc, swap, connect to new doc
     disconnect_document(old_doc);
     _doc_to_id.erase(old_doc);
@@ -344,6 +406,11 @@ void PipeMode::handle_load(int window_id, std::string filename, std::string svg_
 
     _doc_to_id[new_doc] = window_id;
     connect_document(new_doc);
+
+    // Reattach freeze observer to new doc
+    if (is_frozen) {
+        attach_freeze_observer(new_doc);
+    }
 
     // Restore zoom when geometry was preserved (filename unchanged)
     if (_preserve_geometry) {
@@ -429,6 +496,31 @@ void PipeMode::handle_undirty(int window_id)
     }
 }
 
+// --- Freeze-top observer management ---
+
+void PipeMode::attach_freeze_observer(SPDocument *doc)
+{
+    if (!doc) return;
+    auto *root = doc->getReprRoot();
+    if (!root) return;
+
+    auto obs = std::make_unique<FreezeTopObserver>(doc);
+    root->addObserver(*obs);
+    _freeze_observers[doc] = std::move(obs);
+}
+
+void PipeMode::detach_freeze_observer(SPDocument *doc)
+{
+    auto it = _freeze_observers.find(doc);
+    if (it != _freeze_observers.end()) {
+        auto *root = doc->getReprRoot();
+        if (root) {
+            root->removeObserver(*it->second);
+        }
+        _freeze_observers.erase(it);
+    }
+}
+
 // --- Document change observer callback ---
 
 void PipeMode::on_document_changed(SPDocument *doc)
@@ -492,9 +584,11 @@ void PipeMode::on_window_destroyed(InkscapeWindow *window)
     // Clean up observer and mappings
     SPDocument *doc = window->get_document();
     if (doc) {
+        detach_freeze_observer(doc);
         disconnect_document(doc);
         _doc_to_id.erase(doc);
     }
+    _frozen_top_windows.erase(id);
     _id_to_window.erase(id);
     _window_to_id.erase(it);
 

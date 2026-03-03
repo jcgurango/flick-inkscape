@@ -60,10 +60,22 @@ SVG data use a `content-length` header to frame the binary payload.
 **OPEN** — Open a new empty window.
 
 ```
-OPEN
+OPEN [freeze-top]
 ```
 
 Inkscape responds on stdout with `OPEN <id>` (see below).
+
+The optional `freeze-top` parameter prevents structural and attribute
+changes to the root `<svg>` element's direct children. When active:
+- No elements can be inserted at the top level
+- No top-level elements can be reordered
+- No top-level elements can be deleted
+- No attributes on top-level content elements can be modified
+
+Internal elements (`sodipodi:namedview`, `svg:defs`, `svg:metadata`,
+`svg:title`, `svg:desc`) are exempt from attribute freezing so that
+Inkscape internals continue to function normally. The freeze persists
+across `LOAD` commands on the same window.
 
 **LOAD** — Load an SVG document into an existing window.
 

@@ -120,10 +120,10 @@ function parseStdout(stream, handlers) {
           continue;
         }
 
-        // NCLIP <element-id>
-        const nclipMatch = line.match(/^NCLIP (.+)$/);
+        // NCLIP <window-id> <element-id>
+        const nclipMatch = line.match(/^NCLIP (\d+) (.+)$/);
         if (nclipMatch) {
-          handlers.onNclip(nclipMatch[1]);
+          handlers.onNclip(parseInt(nclipMatch[1]), nclipMatch[2]);
           continue;
         }
 
@@ -201,8 +201,8 @@ parseStdout(proc.stdout, {
   onRequestSave(id) {
     console.log(`\n<<< REQUESTSAVE window ${id}`);
   },
-  onNclip(elementId) {
-    console.log(`\n<<< NCLIP element "${elementId}"`);
+  onNclip(windowId, elementId) {
+    console.log(`\n<<< NCLIP window ${windowId} element "${elementId}"`);
   },
   onUndo(id) {
     console.log(`\n<<< UNDO window ${id}`);

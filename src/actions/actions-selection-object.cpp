@@ -53,8 +53,9 @@ select_object_create_clip(InkscapeApplication* app)
     Inkscape::DocumentUndo::done(selection->document(), _("Create Clip"), INKSCAPE_ICON("object-group"));
 
     const char *id = group_node->attribute("id");
-    if (id) {
-        pm->write_line("NCLIP " + std::string(id));
+    int window_id = pm->get_window_id(selection->document());
+    if (id && window_id >= 0) {
+        pm->write_line("NCLIP " + std::to_string(window_id) + " " + std::string(id));
     }
 }
 

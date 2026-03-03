@@ -183,10 +183,11 @@ disabled in pipe mode.
 objects are grouped and the group's SVG ID is reported.
 
 ```
-NCLIP <element-id>
+NCLIP <window-id> <element-id>
 ```
 
-The `<element-id>` is the `id` attribute of the newly created `<svg:g>`
+The `<window-id>` identifies which window the clip was created in. The
+`<element-id>` is the `id` attribute of the newly created `<svg:g>`
 element in the document. This is emitted after the group is created and
 the undo step is recorded (a `SAVE` will follow). Only available in pipe
 mode.
